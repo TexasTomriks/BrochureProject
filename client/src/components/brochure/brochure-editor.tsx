@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Eye, Download, Building, CalendarIcon, Image, Move, Save, FileText, Plus, Minus, RotateCw, Maximize2 } from "lucide-react";
+import { Eye, Download, Building, CalendarIcon, Image, Move, Save, FileText, Plus, Minus, RotateCw, Maximize2, Upload } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +47,7 @@ export default function BrochureEditor({
   const [campaignDescription, setCampaignDescription] = useState("");
   const [isCreateCampaignOpen, setIsCreateCampaignOpen] = useState(false);
   const [isDownloadOpen, setIsDownloadOpen] = useState(false);
+  const [isLogoSelectOpen, setIsLogoSelectOpen] = useState(false);
   const [draggedElement, setDraggedElement] = useState<string | null>(null);
   const [draggedProductId, setDraggedProductId] = useState<number | null>(null);
   const [rotatingProductId, setRotatingProductId] = useState<number | null>(null);
@@ -410,50 +411,59 @@ export default function BrochureEditor({
     setIsCreateCampaignOpen(true);
   };
 
-  // FIXED: Auto Placement Feature
+  // FIXED: Auto Layout that preserves page assignments
   const handleAutoLayout = () => {
-    const itemsPerPage = Math.ceil(selectedProducts.length / pages);
-    const gridCols = Math.min(3, Math.ceil(Math.sqrt(itemsPerPage)));
-    const gridRows = Math.ceil(itemsPerPage / gridCols);
-    
     const newPositions: Record<number, { x: number; y: number }> = {};
     const newScales: Record<number, { scaleX: number; scaleY: number }> = {};
-    const newPages: Record<number, number> = {};
     
-    selectedProducts.forEach((item, index) => {
-      const pageNumber = Math.floor(index / itemsPerPage) + 1;
-      const indexInPage = index % itemsPerPage;
-      const col = indexInPage % gridCols;
-      const row = Math.floor(indexInPage / gridCols);
+    // Group products by their current page assignments
+    const productsByPage: Record<number, any[]> = {};
+    selectedProducts.forEach((item) => {
+      const pageNumber = productPages[item.id] || 1;
+      if (!productsByPage[pageNumber]) {
+        productsByPage[pageNumber] = [];
+      }
+      productsByPage[pageNumber].push(item);
+    });
+    
+    // Arrange products within each page while preserving page assignments
+    Object.entries(productsByPage).forEach(([pageNum, products]) => {
+      const pageNumber = parseInt(pageNum);
+      const itemsInPage = products.length;
+      const gridCols = Math.min(3, Math.ceil(Math.sqrt(itemsInPage)));
+      const gridRows = Math.ceil(itemsInPage / gridCols);
       
-      // Calculate position with proper spacing
       const canvasWidth = isDesignMode ? 400 : 600;
       const canvasHeight = isDesignMode ? 533 : 800;
       const productSize = 132;
       const marginX = 40;
-      const marginY = 150; // Start below header area
+      const marginY = 150;
       
       const availableWidth = canvasWidth - (2 * marginX);
       const availableHeight = canvasHeight - marginY - 40;
       const spaceX = availableWidth / gridCols;
       const spaceY = availableHeight / gridRows;
       
-      newPositions[item.id] = {
-        x: marginX + (col * spaceX) + (spaceX - productSize) / 2,
-        y: marginY + (row * spaceY) + (spaceY - productSize) / 2
-      };
-      
-      newScales[item.id] = { scaleX: 1, scaleY: 1 };
-      newPages[item.id] = Math.min(pageNumber, pages);
+      products.forEach((item, indexInPage) => {
+        const col = indexInPage % gridCols;
+        const row = Math.floor(indexInPage / gridCols);
+        
+        newPositions[item.id] = {
+          x: marginX + (col * spaceX) + (spaceX - productSize) / 2,
+          y: marginY + (row * spaceY) + (spaceY - productSize) / 2
+        };
+        
+        newScales[item.id] = { scaleX: 1, scaleY: 1 };
+      });
     });
     
     setProductPositions(newPositions);
     setProductScales(newScales);
-    setProductPages(newPages);
+    // Don't modify productPages - preserve user's page assignments
     
     toast({
       title: "Auto Layout Applied",
-      description: `Products arranged automatically across ${pages} page${pages > 1 ? 's' : ''}.`,
+      description: "Products repositioned while preserving page assignments.",
     });
   };
 
@@ -841,12 +851,13 @@ export default function BrochureEditor({
                     }
                   }}
                 >
-            {/* FIXED: Interactive Company Logo */}
-            <div 
-              className="absolute draggable-element cursor-move user-select-none z-20 group"
-              style={{ left: elementPositions.logo.x, top: elementPositions.logo.y }}
-              onMouseDown={(e) => handleMouseDown('logo', e)}
-            >
+            {/* FIXED: Interactive Company Logo - Only show if not explicitly removed */}
+            {selectedLogoId !== -1 && (
+              <div 
+                className="absolute draggable-element cursor-move user-select-none z-20 group"
+                style={{ left: elementPositions.logo.x, top: elementPositions.logo.y }}
+                onMouseDown={(e) => handleMouseDown('logo', e)}
+              >
               <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center shadow-lg overflow-hidden relative">
                 {selectedLogo ? (
                   <>
@@ -864,7 +875,7 @@ export default function BrochureEditor({
                       className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedLogoId(null);
+                        setIsLogoSelectOpen(true); // Open selection dialog instead of just removing
                       }}
                       data-edit-control="true"
                     >
@@ -874,7 +885,7 @@ export default function BrochureEditor({
                 ) : (
                   <div 
                     className="w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => document.getElementById('logo-upload-input')?.click()}
+                    onClick={() => setIsLogoSelectOpen(true)}
                   >
                     <Building className="w-8 h-8 text-gray-400" />
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black bg-opacity-50 rounded-lg transition-opacity">
@@ -883,7 +894,8 @@ export default function BrochureEditor({
                   </div>
                 )}
               </div>
-            </div>
+              </div>
+            )}
 
             {/* Company Name */}
             <div 
@@ -1134,6 +1146,65 @@ export default function BrochureEditor({
         </DialogContent>
       </Dialog>
 
+      {/* Logo Selection Dialog */}
+      <Dialog open={isLogoSelectOpen} onOpenChange={setIsLogoSelectOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Logo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Upload new logo option */}
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
+              <button
+                onClick={() => document.getElementById('logo-upload-input')?.click()}
+                className="w-full text-gray-600 hover:text-gray-800"
+              >
+                <Upload className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-sm font-medium">Upload New Logo</p>
+              </button>
+            </div>
+            
+            {/* Existing logos grid */}
+            {logos && logos.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Choose from existing logos:</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  {logos.map((logo) => (
+                    <button
+                      key={logo.id}
+                      onClick={() => {
+                        setSelectedLogoId(logo.id);
+                        setIsLogoSelectOpen(false);
+                      }}
+                      className="aspect-square border rounded-lg p-2 hover:border-blue-500 transition-colors"
+                    >
+                      <img
+                        src={logo.filePath ? `/uploads/${logo.filePath.split('/').pop()}` : ''}
+                        alt={logo.name}
+                        className="w-full h-full object-contain"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Remove logo option */}
+            <div className="pt-2 border-t">
+              <button
+                onClick={() => {
+                  setSelectedLogoId(-1); // Use -1 to indicate completely removed
+                  setIsLogoSelectOpen(false);
+                }}
+                className="w-full text-left text-red-600 hover:text-red-800 text-sm"
+              >
+                Remove logo area entirely
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Hidden logo upload input */}
       <input
         id="logo-upload-input"
@@ -1145,7 +1216,7 @@ export default function BrochureEditor({
           if (!file || !user?.id) return;
           
           const formData = new FormData();
-          formData.append('logo', file);
+          formData.append('file', file); // FIXED: Use 'file' field name to match server
           formData.append('name', file.name);
           formData.append('userId', user.id.toString());
           
@@ -1158,6 +1229,7 @@ export default function BrochureEditor({
             if (response.ok) {
               const newLogo = await response.json();
               setSelectedLogoId(newLogo.id);
+              setIsLogoSelectOpen(false);
               queryClient.invalidateQueries({ queryKey: ['/api/logos'] });
               toast({
                 title: "Logo uploaded successfully",
