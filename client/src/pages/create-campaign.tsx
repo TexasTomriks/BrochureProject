@@ -83,15 +83,21 @@ export default function CreateCampaign() {
 
   // Auto-distribute products when moving to editor step
   const handleProceedToEditor = () => {
-    if (selectedProducts.length > 0) {
-      // Auto-distribute products across the selected page count and set pages for brochure editor
-      const updatedProducts = selectedProducts.map((item, index) => ({
-        ...item,
-        pageNumber: (index % pageCount) + 1
-      }));
-      setSelectedProducts(updatedProducts);
+    try {
+      if (selectedProducts.length > 0) {
+        // Auto-distribute products across the selected page count and set pages for brochure editor
+        const updatedProducts = selectedProducts.map((item, index) => ({
+          ...item,
+          pageNumber: (index % pageCount) + 1
+        }));
+        setSelectedProducts(updatedProducts);
+      }
+      setCreationStep('editor');
+    } catch (error) {
+      console.error('Error proceeding to editor:', error);
+      // Still proceed to editor even if there's an error with product distribution
+      setCreationStep('editor');
     }
-    setCreationStep('editor');
   };
 
   const handleProductSelect = (product: Product) => {

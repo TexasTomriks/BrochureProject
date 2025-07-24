@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Eye, Download, Building, CalendarIcon, Image, Move, Save, FileText, Plus, Minus, RotateCw, Maximize2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -103,46 +103,50 @@ export default function BrochureEditor({
 
   // Initialize product positions when selectedProducts change
   useEffect(() => {
-    const newPositions: Record<number, { x: number; y: number }> = {};
-    const newScales: Record<number, { scaleX: number; scaleY: number }> = {};
-    const newPages: Record<number, number> = {};
-    
-    selectedProducts.forEach((item, index) => {
-      if (!productPositions[item.id]) {
-        // Use saved position if available, otherwise arrange in a 3-column grid
-        if (item.positionX !== undefined && item.positionY !== undefined && item.positionX !== null && item.positionY !== null && (item.positionX !== 0 || item.positionY !== 0)) {
-          newPositions[item.id] = {
-            x: item.positionX,
-            y: item.positionY,
-          };
+    try {
+      const newPositions: Record<number, { x: number; y: number }> = {};
+      const newScales: Record<number, { scaleX: number; scaleY: number }> = {};
+      const newPages: Record<number, number> = {};
+      
+      selectedProducts.forEach((item, index) => {
+        if (!productPositions[item.id]) {
+          // Use saved position if available, otherwise arrange in a 3-column grid
+          if (item.positionX !== undefined && item.positionY !== undefined && item.positionX !== null && item.positionY !== null && (item.positionX !== 0 || item.positionY !== 0)) {
+            newPositions[item.id] = {
+              x: item.positionX,
+              y: item.positionY,
+            };
+          } else {
+            const col = index % 3;
+            const row = Math.floor(index / 3);
+            newPositions[item.id] = {
+              x: 50 + (col * 180), // 180px apart horizontally
+              y: 150 + (row * 200), // 200px apart vertically
+            };
+          }
         } else {
-          const col = index % 3;
-          const row = Math.floor(index / 3);
-          newPositions[item.id] = {
-            x: 50 + (col * 180), // 180px apart horizontally
-            y: 150 + (row * 200), // 200px apart vertically
+          newPositions[item.id] = productPositions[item.id];
+        }
+        
+        // Initialize scales and pages
+        if (!productScales[item.id]) {
+          newScales[item.id] = {
+            scaleX: item.scaleX || 1,
+            scaleY: item.scaleY || 1,
           };
         }
-      } else {
-        newPositions[item.id] = productPositions[item.id];
-      }
+        
+        if (!productPages[item.id]) {
+          newPages[item.id] = item.pageNumber || 1;
+        }
+      });
       
-      // Initialize scales and pages
-      if (!productScales[item.id]) {
-        newScales[item.id] = {
-          scaleX: item.scaleX || 1,
-          scaleY: item.scaleY || 1,
-        };
-      }
-      
-      if (!productPages[item.id]) {
-        newPages[item.id] = item.pageNumber || 1;
-      }
-    });
-    
-    setProductPositions(prev => ({ ...prev, ...newPositions }));
-    setProductScales(prev => ({ ...prev, ...newScales }));
-    setProductPages(prev => ({ ...prev, ...newPages }));
+      setProductPositions(prev => ({ ...prev, ...newPositions }));
+      setProductScales(prev => ({ ...prev, ...newScales }));
+      setProductPages(prev => ({ ...prev, ...newPages }));
+    } catch (error) {
+      console.error('Error initializing product positions:', error);
+    }
   }, [selectedProducts]);
 
   // Set initial pages when in design mode
@@ -660,14 +664,24 @@ export default function BrochureEditor({
                     width: isDesignMode ? "400px" : "600px", 
                     height: isDesignMode ? "533px" : "800px",
                     backgroundImage: (() => {
-                      // FIXED: Use page-specific template if available in design mode
-                      const pageTemplateId = pageTemplates[pageNumber];
-                      const pageTemplate = templates?.find(t => t.id === pageTemplateId);
-                      if (pageTemplate) {
-                        return `url(/uploads/${pageTemplate.filePath})`;
+                      try {
+                        // FIXED: Use page-specific template if available in design mode
+                        const pageTemplateId = pageTemplates?.[pageNumber];
+                        if (pageTemplateId && templates && templates.length > 0) {
+                          const pageTemplate = templates.find(t => t.id === pageTemplateId);
+                          if (pageTemplate && pageTemplate.filePath) {
+                            return `url(/uploads/${pageTemplate.filePath})`;
+                          }
+                        }
+                        // Fallback to global selected template or gradient
+                        if (selectedTemplate && selectedTemplate.filePath) {
+                          return `url(/uploads/${selectedTemplate.filePath})`;
+                        }
+                        return 'linear-gradient(135deg, #60a5fa 0%, #a855f7 100%)';
+                      } catch (error) {
+                        console.error('Error loading template:', error);
+                        return 'linear-gradient(135deg, #60a5fa 0%, #a855f7 100%)';
                       }
-                      // Fallback to global selected template or gradient
-                      return selectedTemplate ? `url(/uploads/${selectedTemplate.filePath})` : 'linear-gradient(135deg, #60a5fa 0%, #a855f7 100%)';
                     })(),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
