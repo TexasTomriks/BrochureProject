@@ -63,6 +63,9 @@ export default function BrochureEditor({
   const [productScales, setProductScales] = useState<Record<number, { scaleX: number; scaleY: number }>>({});
   const [productPages, setProductPages] = useState<Record<number, number>>({});
   const [dropTargetPage, setDropTargetPage] = useState<number | null>(null);
+  const [datePositions, setDatePositions] = useState<Record<number, { x: number; y: number }>>({});
+  const [isDraggingDate, setIsDraggingDate] = useState<number | null>(null);
+  const [dateDragStart, setDateDragStart] = useState<{ x: number; y: number } | null>(null);
   const [initialResizeState, setInitialResizeState] = useState<{
     startX: number;
     startY: number;
@@ -155,6 +158,19 @@ export default function BrochureEditor({
       setPages(initialPages);
     }
   }, [isDesignMode, initialPages]);
+
+  // Initialize default date positions for each page
+  useEffect(() => {
+    const newDatePositions: Record<number, { x: number; y: number }> = {};
+    for (let i = 1; i <= pages; i++) {
+      if (!datePositions[i]) {
+        newDatePositions[i] = { x: 320, y: 20 }; // Default position: top-right area
+      }
+    }
+    if (Object.keys(newDatePositions).length > 0) {
+      setDatePositions(prev => ({ ...prev, ...newDatePositions }));
+    }
+  }, [pages]);
 
   const { data: templates = [] } = useQuery<Template[]>({
     queryKey: ["/api/templates", user?.id],
@@ -302,6 +318,16 @@ export default function BrochureEditor({
       }));
     }
     
+    if (isDraggingDate && dateDragStart && pageNumber) {
+      setDatePositions(prev => ({
+        ...prev,
+        [pageNumber]: { 
+          x: Math.max(0, Math.min(x - dateDragStart.x, rect.width - 120)), 
+          y: Math.max(0, Math.min(y - dateDragStart.y, rect.height - 30)) 
+        }
+      }));
+    }
+
     if (draggedProductId) {
       // FIXED: Dynamic boundary constraints based on actual canvas size
       const canvasWidth = rect.width;
@@ -362,6 +388,8 @@ export default function BrochureEditor({
     setRotatingProductId(null);
     setResizingProductId(null);
     setInitialResizeState(null);
+    setIsDraggingDate(null);
+    setDateDragStart(null);
   };
 
   
@@ -463,46 +491,80 @@ export default function BrochureEditor({
     }
   };
 
-  const handleDownload = (format: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Hide all edit controls before capturing
-    const editControls = canvas.querySelectorAll('[data-edit-control="true"]');
-    const originalDisplay = Array.from(editControls).map(el => (el as HTMLElement).style.display);
-    editControls.forEach(el => ((el as HTMLElement).style.display = 'none'));
-
+  const handleDownload = async (format: string) => {
     if (format === "pdf") {
-      // For PDF, we would use a library like html2pdf or puppeteer
       toast({
         title: "PDF Download",
         description: "PDF generation will be implemented with a proper PDF library.",
       });
-      // Restore edit controls
-      editControls.forEach((el, index) => ((el as HTMLElement).style.display = originalDisplay[index]));
-    } else {
-      // For image formats, we can use html2canvas
-      import('html2canvas').then((module) => {
-        const html2canvas = module.default;
-        html2canvas(canvas).then((downloadCanvas) => {
-          const link = document.createElement('a');
-          link.download = `brochure.${format}`;
-          link.href = downloadCanvas.toDataURL(`image/${format}`);
-          link.click();
-          
-          // Restore edit controls after download
-          editControls.forEach((el, index) => ((el as HTMLElement).style.display = originalDisplay[index]));
-        });
-      }).catch(() => {
+      setIsDownloadOpen(false);
+      return;
+    }
+
+    try {
+      // FIXED: Multi-page download functionality
+      const pageElements = document.querySelectorAll('[data-page-canvas]');
+      
+      if (pageElements.length === 0) {
         toast({
           title: "Download failed",
-          description: "Could not generate image. Please try again.",
+          description: "No pages found to download.",
           variant: "destructive",
         });
-        // Restore edit controls even on error
-        editControls.forEach((el, index) => ((el as HTMLElement).style.display = originalDisplay[index]));
+        setIsDownloadOpen(false);
+        return;
+      }
+
+      // Hide all edit controls before capturing
+      const editControls = document.querySelectorAll('[data-edit-control="true"]');
+      const originalDisplay = Array.from(editControls).map(el => (el as HTMLElement).style.display);
+      editControls.forEach(el => ((el as HTMLElement).style.display = 'none'));
+
+      const html2canvas = await import('html2canvas');
+      
+      if (pageElements.length === 1) {
+        // Single page download
+        const canvas = await html2canvas.default(pageElements[0] as HTMLElement);
+        const link = document.createElement('a');
+        link.download = `brochure.${format}`;
+        link.href = canvas.toDataURL(`image/${format}`);
+        link.click();
+      } else {
+        // Multi-page download as ZIP
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        
+        for (let i = 0; i < pageElements.length; i++) {
+          const canvas = await html2canvas.default(pageElements[i] as HTMLElement);
+          const dataUrl = canvas.toDataURL(`image/${format}`);
+          const base64Data = dataUrl.split(',')[1];
+          zip.file(`page-${i + 1}.${format}`, base64Data, { base64: true });
+        }
+        
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.download = `brochure-pages.zip`;
+        link.href = URL.createObjectURL(zipBlob);
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+
+      // Restore edit controls
+      editControls.forEach((el, index) => ((el as HTMLElement).style.display = originalDisplay[index]));
+      
+      toast({
+        title: "Download successful",
+        description: pageElements.length > 1 ? `Downloaded ${pageElements.length} pages as ZIP file.` : "Downloaded brochure successfully.",
+      });
+      
+    } catch (error) {
+      toast({
+        title: "Download failed",
+        description: "Could not generate image. Please try again.",
+        variant: "destructive",
       });
     }
+    
     setIsDownloadOpen(false);
   };
 
@@ -532,24 +594,26 @@ export default function BrochureEditor({
       </div>
 
       <div className="flex-1 p-6 overflow-y-auto">
-        {/* Campaign name and description for saving */}
-        {!isDesignMode && (
-          <div className="mb-6 space-y-4">
+        {/* FIXED: Date selector moved outside design area */}
+        <div className="mb-6 space-y-4">
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Campaign Dates</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-600 mb-2">
                   Start Date
                 </label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
+                      size="sm"
                       className={cn(
                         "w-full justify-start text-left font-normal",
                         !startDate && "text-muted-foreground"
                       )}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      <CalendarIcon className="mr-2 h-3 w-3" />
                       {startDate ? format(startDate, "MMM dd, yyyy") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
@@ -565,19 +629,20 @@ export default function BrochureEditor({
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-600 mb-2">
                   End Date
                 </label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
+                      size="sm"
                       className={cn(
                         "w-full justify-start text-left font-normal",
                         !endDate && "text-muted-foreground"
                       )}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      <CalendarIcon className="mr-2 h-3 w-3" />
                       {endDate ? format(endDate, "MMM dd, yyyy") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
@@ -593,7 +658,7 @@ export default function BrochureEditor({
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* Page Management - Only show if not in design mode */}
         {!isDesignMode && (
@@ -653,7 +718,8 @@ export default function BrochureEditor({
                 </div>
                 
                 <div
-                  ref={canvasRef}
+                  ref={pageNumber === 1 ? canvasRef : undefined}
+                  data-page-canvas={pageNumber}
                   className={cn(
                     "drag-drop-area border-2 border-dashed rounded-xl relative mx-auto transition-colors",
                     dropTargetPage === pageNumber 
@@ -737,72 +803,31 @@ export default function BrochureEditor({
               </h1>
             </div>
 
-            {/* Campaign Date Range */}
-            <div 
-              className="absolute draggable-element cursor-move user-select-none z-20"
-              style={{ left: elementPositions.dateRange.x, top: elementPositions.dateRange.y }}
-              onMouseDown={(e) => handleMouseDown('dateRange', e)}
-            >
-              <div className="bg-white bg-opacity-90 px-4 py-2 rounded-lg border border-gray-200 shadow-lg">
-                <span className="text-sm font-semibold text-gray-900">
-                  {formatDateRange()}
-                </span>
+            {/* FIXED: Draggable Date Display on each page */}
+            {startDate && endDate && (
+              <div 
+                className="absolute cursor-move user-select-none z-20 bg-white/90 px-3 py-1 rounded-md shadow-md text-sm font-medium text-gray-800 border border-gray-200"
+                style={{ 
+                  left: datePositions[pageNumber]?.x || 320, 
+                  top: datePositions[pageNumber]?.y || 20 
+                }}
+                onMouseDown={(e) => {
+                  setIsDraggingDate(pageNumber);
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setDateDragStart({
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                  });
+                  e.preventDefault();
+                }}
+                data-edit-control="true"
+              >
+                <CalendarIcon className="inline w-3 h-3 mr-1" />
+                {format(startDate, "MMM dd")} - {format(endDate, "MMM dd, yyyy")}
               </div>
-            </div>
+            )}
 
-            {/* FIXED: On-canvas Date Selector */}
-            <div className="absolute top-4 right-4 z-30 bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-gray-200">
-              <div className="text-xs font-medium text-gray-700 mb-2">Select Campaign Dates</div>
-              <div className="flex space-x-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        "text-xs h-8",
-                        !startDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-1 h-3 w-3" />
-                      {startDate ? format(startDate, "MMM dd") : "Start"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={startDate}
-                      onSelect={setStartDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        "text-xs h-8",
-                        !endDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-1 h-3 w-3" />
-                      {endDate ? format(endDate, "MMM dd") : "End"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={endDate}
-                      onSelect={setEndDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
+
 
             {/* Drop zone message when no products */}
             {selectedProducts.length === 0 && (
