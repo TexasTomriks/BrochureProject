@@ -22,6 +22,7 @@ interface BrochureEditorProps {
   onProductPositionUpdate?: (productId: number, x: number, y: number) => void;
   isDesignMode?: boolean;
   initialPages?: number;
+  pageTemplates?: Record<number, number | null>;
 }
 
 export default function BrochureEditor({
@@ -31,6 +32,7 @@ export default function BrochureEditor({
   onProductPositionUpdate,
   isDesignMode = false,
   initialPages = 1,
+  pageTemplates = {},
 }: BrochureEditorProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -297,11 +299,16 @@ export default function BrochureEditor({
     }
     
     if (draggedProductId) {
+      // FIXED: Dynamic boundary constraints based on actual canvas size
+      const canvasWidth = rect.width;
+      const canvasHeight = rect.height;
+      const productSize = 132; // Product element size including text area
+      
       setProductPositions(prev => ({
         ...prev,
         [draggedProductId]: { 
-          x: Math.max(0, Math.min(x - 66, 600 - 132)), // Keep within canvas bounds (132px is product width)
-          y: Math.max(0, Math.min(y - 66, 800 - 180))  // Keep within canvas bounds (180px including text)
+          x: Math.max(0, Math.min(x - 66, canvasWidth - productSize)),
+          y: Math.max(0, Math.min(y - 66, canvasHeight - productSize))
         }
       }));
     }
@@ -325,15 +332,15 @@ export default function BrochureEditor({
       const deltaX = e.clientX - initialResizeState.startX;
       const deltaY = e.clientY - initialResizeState.startY;
       
-      // Calculate proportional scale based on distance from start point
-      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-      const scaleFactor = Math.max(0.2, 1 + distance / 200); // Min scale 0.2x, scale based on distance
+      // FIXED: Bidirectional resizing - support both growing and shrinking
+      const avgDelta = (deltaX + deltaY) / 2;
+      const scaleFactor = Math.max(0.1, initialResizeState.startScale.scaleX + (avgDelta / 150));
       
       setProductScales(prev => ({
         ...prev,
         [resizingProductId]: {
-          scaleX: initialResizeState.startScale.scaleX * scaleFactor,
-          scaleY: initialResizeState.startScale.scaleY * scaleFactor,
+          scaleX: scaleFactor,
+          scaleY: scaleFactor,
         }
       }));
     }
@@ -378,6 +385,11 @@ export default function BrochureEditor({
     }
 
     try {
+      // FIXED: Handle multiple pages by using the first available template
+      const firstAvailableTemplateId = pageTemplates && Object.keys(pageTemplates).length > 0 
+        ? Object.values(pageTemplates).find(id => id !== null) 
+        : selectedTemplateId;
+
       // First create the campaign
       const campaignData = {
         name: campaignName,
@@ -387,8 +399,9 @@ export default function BrochureEditor({
         userId: user?.id,
         startDate: startDate?.toISOString() || null,
         endDate: endDate?.toISOString() || null,
-        templateId: selectedTemplateId,
+        templateId: firstAvailableTemplateId,
         logoId: selectedLogoId,
+        pageCount: pages, // Include page count
       };
 
       const response = await fetch("/api/campaigns", {
@@ -401,9 +414,13 @@ export default function BrochureEditor({
       
       const newCampaign = await response.json();
 
-      // Now save all the campaign products with their positions
+      // FIXED: Save all campaign products with their positions AND page assignments
       for (const product of selectedProducts) {
         const position = productPositions[product.id] || { x: 0, y: 0 };
+        const pageNumber = productPages[product.id] || 1;
+        const scale = productScales[product.id] || { scaleX: 1, scaleY: 1 };
+        const rotation = productRotations[product.id] || 0;
+        
         const campaignProductData = {
           campaignId: newCampaign.id,
           productId: product.product.id,
@@ -412,6 +429,10 @@ export default function BrochureEditor({
           newPrice: product.newPrice,
           positionX: position.x,
           positionY: position.y,
+          pageNumber: pageNumber,
+          scaleX: scale.scaleX,
+          scaleY: scale.scaleY,
+          rotation: rotation,
         };
 
         await fetch(`/api/campaigns/${newCampaign.id}/products`, {
@@ -498,7 +519,7 @@ export default function BrochureEditor({
               <Download className="w-4 h-4 mr-2" />
               Download
             </Button>
-            <Button size="sm" onClick={handleCreateCampaign}>
+            <Button size="sm" onClick={() => setIsCreateCampaignOpen(true)}>
               <Save className="w-4 h-4 mr-2" />
               Create Campaign
             </Button>
@@ -507,66 +528,68 @@ export default function BrochureEditor({
       </div>
 
       <div className="flex-1 p-6 overflow-y-auto">
-        {/* Date Settings Only */}
-        <div className="mb-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Start Date
-              </label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !startDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, "MMM dd, yyyy") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={startDate}
-                    onSelect={setStartDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                End Date
-              </label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !endDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {endDate ? format(endDate, "MMM dd, yyyy") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={endDate}
-                    onSelect={setEndDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+        {/* Campaign name and description for saving */}
+        {!isDesignMode && (
+          <div className="mb-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Start Date
+                </label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !startDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {startDate ? format(startDate, "MMM dd, yyyy") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  End Date
+                </label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !endDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {endDate ? format(endDate, "MMM dd, yyyy") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Page Management - Only show if not in design mode */}
         {!isDesignMode && (
@@ -636,7 +659,16 @@ export default function BrochureEditor({
                   style={{ 
                     width: isDesignMode ? "400px" : "600px", 
                     height: isDesignMode ? "533px" : "800px",
-                    backgroundImage: selectedTemplate ? `url(/uploads/${selectedTemplate.filePath})` : 'linear-gradient(135deg, #60a5fa 0%, #a855f7 100%)',
+                    backgroundImage: (() => {
+                      // FIXED: Use page-specific template if available in design mode
+                      const pageTemplateId = pageTemplates[pageNumber];
+                      const pageTemplate = templates?.find(t => t.id === pageTemplateId);
+                      if (pageTemplate) {
+                        return `url(/uploads/${pageTemplate.filePath})`;
+                      }
+                      // Fallback to global selected template or gradient
+                      return selectedTemplate ? `url(/uploads/${selectedTemplate.filePath})` : 'linear-gradient(135deg, #60a5fa 0%, #a855f7 100%)';
+                    })(),
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     backgroundRepeat: 'no-repeat'
@@ -660,7 +692,7 @@ export default function BrochureEditor({
                 >
             {/* Company Logo */}
             <div 
-              className="absolute draggable-element cursor-move user-select-none"
+              className="absolute draggable-element cursor-move user-select-none z-20"
               style={{ left: elementPositions.logo.x, top: elementPositions.logo.y }}
               onMouseDown={(e) => handleMouseDown('logo', e)}
             >
@@ -682,7 +714,7 @@ export default function BrochureEditor({
 
             {/* Company Name */}
             <div 
-              className="absolute draggable-element cursor-move user-select-none"
+              className="absolute draggable-element cursor-move user-select-none z-20"
               style={{ left: elementPositions.companyName.x, top: elementPositions.companyName.y }}
               onMouseDown={(e) => handleMouseDown('companyName', e)}
             >
@@ -693,14 +725,68 @@ export default function BrochureEditor({
 
             {/* Campaign Date Range */}
             <div 
-              className="absolute draggable-element cursor-move user-select-none"
+              className="absolute draggable-element cursor-move user-select-none z-20"
               style={{ left: elementPositions.dateRange.x, top: elementPositions.dateRange.y }}
               onMouseDown={(e) => handleMouseDown('dateRange', e)}
             >
-              <div className="bg-white bg-opacity-90 px-4 py-2 rounded-lg">
+              <div className="bg-white bg-opacity-90 px-4 py-2 rounded-lg border border-gray-200 shadow-lg">
                 <span className="text-sm font-semibold text-gray-900">
                   {formatDateRange()}
                 </span>
+              </div>
+            </div>
+
+            {/* FIXED: On-canvas Date Selector */}
+            <div className="absolute top-4 right-4 z-30 bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-gray-200">
+              <div className="text-xs font-medium text-gray-700 mb-2">Select Campaign Dates</div>
+              <div className="flex space-x-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "text-xs h-8",
+                        !startDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-1 h-3 w-3" />
+                      {startDate ? format(startDate, "MMM dd") : "Start"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "text-xs h-8",
+                        !endDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-1 h-3 w-3" />
+                      {endDate ? format(endDate, "MMM dd") : "End"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
@@ -730,7 +816,7 @@ export default function BrochureEditor({
                         key={item.id}
                         className={cn(
                           "absolute select-none",
-                          isDragging ? "z-20" : isRotating || isResizing ? "z-10" : "z-0"
+                          isDragging ? "z-50" : isRotating || isResizing ? "z-40" : "z-30"
                         )}
                         style={{ 
                           left: position.x, 
@@ -850,11 +936,14 @@ export default function BrochureEditor({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
+            <DialogDescription>
+              Enter a name and description for your campaign ({pages} page{pages > 1 ? 's' : ''})
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Campaign Name
+                Campaign Name *
               </label>
               <Input
                 value={campaignName}
@@ -872,11 +961,14 @@ export default function BrochureEditor({
                 placeholder="Enter campaign description"
               />
             </div>
+            <div className="text-sm text-gray-600">
+              This campaign will include {selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''} distributed across {pages} page{pages > 1 ? 's' : ''}.
+            </div>
             <div className="flex justify-end space-x-3">
               <Button variant="outline" onClick={() => setIsCreateCampaignOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSaveCampaign}>
+              <Button onClick={handleCreateCampaign} disabled={!campaignName.trim()}>
                 Create Campaign
               </Button>
             </div>

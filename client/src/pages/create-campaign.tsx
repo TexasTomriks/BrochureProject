@@ -411,6 +411,7 @@ export default function CreateCampaign() {
               onProductPositionUpdate={handleProductPositionUpdate}
               isDesignMode={true}
               initialPages={pageCount}
+              pageTemplates={pageTemplates}
             />
           </div>
         );
