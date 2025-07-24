@@ -152,10 +152,14 @@ export default function BrochureEditor({
     }
   }, [selectedProducts]);
 
-  // Set initial pages when in design mode
+  // Set initial pages when in design mode and apply auto layout
   useEffect(() => {
     if (isDesignMode && initialPages > 0) {
       setPages(initialPages);
+      // FIXED: Auto-apply layout when entering design mode
+      if (selectedProducts.length > 0) {
+        setTimeout(() => handleAutoLayout(), 100);
+      }
     }
   }, [isDesignMode, initialPages]);
 
@@ -406,6 +410,53 @@ export default function BrochureEditor({
     setIsCreateCampaignOpen(true);
   };
 
+  // FIXED: Auto Placement Feature
+  const handleAutoLayout = () => {
+    const itemsPerPage = Math.ceil(selectedProducts.length / pages);
+    const gridCols = Math.min(3, Math.ceil(Math.sqrt(itemsPerPage)));
+    const gridRows = Math.ceil(itemsPerPage / gridCols);
+    
+    const newPositions: Record<number, { x: number; y: number }> = {};
+    const newScales: Record<number, { scaleX: number; scaleY: number }> = {};
+    const newPages: Record<number, number> = {};
+    
+    selectedProducts.forEach((item, index) => {
+      const pageNumber = Math.floor(index / itemsPerPage) + 1;
+      const indexInPage = index % itemsPerPage;
+      const col = indexInPage % gridCols;
+      const row = Math.floor(indexInPage / gridCols);
+      
+      // Calculate position with proper spacing
+      const canvasWidth = isDesignMode ? 400 : 600;
+      const canvasHeight = isDesignMode ? 533 : 800;
+      const productSize = 132;
+      const marginX = 40;
+      const marginY = 150; // Start below header area
+      
+      const availableWidth = canvasWidth - (2 * marginX);
+      const availableHeight = canvasHeight - marginY - 40;
+      const spaceX = availableWidth / gridCols;
+      const spaceY = availableHeight / gridRows;
+      
+      newPositions[item.id] = {
+        x: marginX + (col * spaceX) + (spaceX - productSize) / 2,
+        y: marginY + (row * spaceY) + (spaceY - productSize) / 2
+      };
+      
+      newScales[item.id] = { scaleX: 1, scaleY: 1 };
+      newPages[item.id] = Math.min(pageNumber, pages);
+    });
+    
+    setProductPositions(newPositions);
+    setProductScales(newScales);
+    setProductPages(newPages);
+    
+    toast({
+      title: "Auto Layout Applied",
+      description: `Products arranged automatically across ${pages} page${pages > 1 ? 's' : ''}.`,
+    });
+  };
+
   const handleSaveCampaign = async () => {
     if (!campaignName.trim()) {
       toast({
@@ -523,11 +574,19 @@ export default function BrochureEditor({
       const html2canvas = await import('html2canvas');
       
       if (pageElements.length === 1) {
-        // Single page download
-        const canvas = await html2canvas.default(pageElements[0] as HTMLElement);
+        // Single page download with enhanced quality
+        const canvas = await html2canvas.default(pageElements[0] as HTMLElement, {
+          scale: 2, // FIXED: Higher resolution for better quality
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+          logging: false,
+          width: pageElements[0].clientWidth,
+          height: pageElements[0].clientHeight
+        });
         const link = document.createElement('a');
         link.download = `brochure.${format}`;
-        link.href = canvas.toDataURL(`image/${format}`);
+        link.href = canvas.toDataURL(`image/${format}`, 0.95); // High quality JPEG
         link.click();
       } else {
         // Multi-page download as ZIP
@@ -535,8 +594,16 @@ export default function BrochureEditor({
         const zip = new JSZip();
         
         for (let i = 0; i < pageElements.length; i++) {
-          const canvas = await html2canvas.default(pageElements[i] as HTMLElement);
-          const dataUrl = canvas.toDataURL(`image/${format}`);
+          const canvas = await html2canvas.default(pageElements[i] as HTMLElement, {
+            scale: 2, // FIXED: Higher resolution for better quality
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: null,
+            logging: false,
+            width: pageElements[i].clientWidth,
+            height: pageElements[i].clientHeight
+          });
+          const dataUrl = canvas.toDataURL(`image/${format}`, 0.95); // High quality JPEG
           const base64Data = dataUrl.split(',')[1];
           zip.file(`page-${i + 1}.${format}`, base64Data, { base64: true });
         }
@@ -581,11 +648,15 @@ export default function BrochureEditor({
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">Brochure Designer</h2>
           <div className="flex items-center space-x-3">
+            <Button variant="outline" size="sm" onClick={handleAutoLayout}>
+              <Maximize2 className="w-4 h-4 mr-2" />
+              Auto Layout
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setIsDownloadOpen(true)}>
               <Download className="w-4 h-4 mr-2" />
               Download
             </Button>
-            <Button size="sm" onClick={() => setIsCreateCampaignOpen(true)}>
+            <Button size="sm" onClick={handleCreateCampaign}>
               <Save className="w-4 h-4 mr-2" />
               Create Campaign
             </Button>
@@ -770,25 +841,47 @@ export default function BrochureEditor({
                     }
                   }}
                 >
-            {/* Company Logo */}
+            {/* FIXED: Interactive Company Logo */}
             <div 
-              className="absolute draggable-element cursor-move user-select-none z-20"
+              className="absolute draggable-element cursor-move user-select-none z-20 group"
               style={{ left: elementPositions.logo.x, top: elementPositions.logo.y }}
               onMouseDown={(e) => handleMouseDown('logo', e)}
             >
-              <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center shadow-lg overflow-hidden">
+              <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center shadow-lg overflow-hidden relative">
                 {selectedLogo ? (
-                  <img 
-                    src={selectedLogo.filePath ? `/uploads/${selectedLogo.filePath.split('/').pop()}` : ''} 
-                    alt="Company Logo" 
-                    className="w-full h-full object-contain rounded-lg"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                      (e.target as HTMLImageElement).nextElementSibling?.removeAttribute('style');
-                    }}
-                  />
-                ) : null}
-                <Building className={`w-8 h-8 text-gray-400 ${selectedLogo ? 'hidden' : ''}`} />
+                  <>
+                    <img 
+                      src={selectedLogo.filePath ? `/uploads/${selectedLogo.filePath.split('/').pop()}` : ''} 
+                      alt="Company Logo" 
+                      className="w-full h-full object-contain rounded-lg"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                        (e.target as HTMLImageElement).nextElementSibling?.removeAttribute('style');
+                      }}
+                    />
+                    {/* Remove logo button */}
+                    <button
+                      className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLogoId(null);
+                      }}
+                      data-edit-control="true"
+                    >
+                      ×
+                    </button>
+                  </>
+                ) : (
+                  <div 
+                    className="w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => document.getElementById('logo-upload-input')?.click()}
+                  >
+                    <Building className="w-8 h-8 text-gray-400" />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black bg-opacity-50 rounded-lg transition-opacity">
+                      <span className="text-white text-xs">Click to add logo</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1040,6 +1133,46 @@ export default function BrochureEditor({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Hidden logo upload input */}
+      <input
+        id="logo-upload-input"
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file || !user?.id) return;
+          
+          const formData = new FormData();
+          formData.append('logo', file);
+          formData.append('name', file.name);
+          formData.append('userId', user.id.toString());
+          
+          try {
+            const response = await fetch('/api/logos', {
+              method: 'POST',
+              body: formData,
+            });
+            
+            if (response.ok) {
+              const newLogo = await response.json();
+              setSelectedLogoId(newLogo.id);
+              queryClient.invalidateQueries({ queryKey: ['/api/logos'] });
+              toast({
+                title: "Logo uploaded successfully",
+                description: "Your logo has been added to the brochure.",
+              });
+            }
+          } catch (error) {
+            toast({
+              title: "Upload failed",
+              description: "Could not upload logo. Please try again.",
+              variant: "destructive",
+            });
+          }
+        }}
+      />
     </div>
   );
 }

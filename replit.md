@@ -123,6 +123,16 @@ The application follows a monorepo structure with separate client and server dir
 - Error handling and logging
 - CORS configuration for cross-origin requests
 
+## Recent Changes: Latest modifications with dates
+
+### January 24, 2025 - Enhanced Design Experience
+- **Date Management**: Date selector moved outside design area for better UX
+- **Interactive Elements**: Added draggable date elements on each brochure page 
+- **Logo Interaction**: Logo area now clickable for upload/removal in Design view
+- **Auto Layout**: Added automatic product arrangement feature enabled by default
+- **Export Quality**: Enhanced JPEG download with 2x scale and 95% quality
+- **Multi-page Support**: Fixed Create Campaign button and ZIP download for multiple pages
+
 ### Development Environment
 - Hot module replacement for frontend
 - TypeScript compilation checking
