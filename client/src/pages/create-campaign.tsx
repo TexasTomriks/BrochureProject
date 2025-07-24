@@ -12,7 +12,7 @@ import BrochureEditor from "@/components/brochure/brochure-editor";
 import { Layout, Users, FileText, ArrowLeft, ArrowRight, CheckCircle, Package } from "lucide-react";
 import type { Product, CampaignProduct, Template } from "@shared/schema";
 
-type CreationStep = 'layout' | 'products' | 'pages' | 'editor';
+type CreationStep = 'products' | 'pages' | 'templates' | 'editor';
 
 export default function CreateCampaign() {
   const { user } = useAuth();
@@ -21,9 +21,10 @@ export default function CreateCampaign() {
   const [currentCampaign, setCurrentCampaign] = useState<any>(null);
   
   // New campaign creation flow state
-  const [creationStep, setCreationStep] = useState<CreationStep>('layout');
+  const [creationStep, setCreationStep] = useState<CreationStep>('products');
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [pageCount, setPageCount] = useState<number>(1);
+  const [pageTemplates, setPageTemplates] = useState<Record<number, number | null>>({});
 
   // Check if we're editing an existing campaign
   const urlParams = new URLSearchParams(location.split('?')[1] || '');
@@ -137,9 +138,9 @@ export default function CreateCampaign() {
 
   // Step indicators
   const steps = [
-    { id: 'layout', name: 'Layout', icon: Layout, description: 'Choose a template' },
-    { id: 'products', name: 'Products', icon: Users, description: 'Select products' },
+    { id: 'products', name: 'Products', icon: Package, description: 'Select products' },
     { id: 'pages', name: 'Pages', icon: FileText, description: 'Set page count' },
+    { id: 'templates', name: 'Templates', icon: Layout, description: 'Choose templates' },
     { id: 'editor', name: 'Design', icon: CheckCircle, description: 'Arrange & finalize' }
   ];
 
@@ -147,84 +148,13 @@ export default function CreateCampaign() {
 
   const renderStepContent = () => {
     switch (creationStep) {
-      case 'layout':
-        return (
-          <Card className="max-w-4xl mx-auto">
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Layout className="w-6 h-6" />
-                <span>Choose Your Template Layout</span>
-              </CardTitle>
-              <CardDescription>
-                Select a template that matches your campaign style. You can upload custom templates in the Template Management section.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {templates.length === 0 ? (
-                <div className="text-center py-12">
-                  <Layout className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                  <p className="text-gray-600 mb-4">No templates available. You can use the default gradient background or upload templates first.</p>
-                  <Button 
-                    onClick={() => setCreationStep('products')}
-                    className="w-full max-w-md"
-                  >
-                    Continue with Default Background
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {templates.map((template) => (
-                    <div 
-                      key={template.id}
-                      className={`relative border-2 rounded-lg cursor-pointer transition-all hover:shadow-lg ${
-                        selectedTemplateId === template.id 
-                          ? 'border-blue-500 bg-blue-50' 
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                      onClick={() => setSelectedTemplateId(template.id)}
-                    >
-                      <div className="aspect-[3/4] rounded-lg overflow-hidden">
-                        <img 
-                          src={`/uploads/${template.filePath}`}
-                          alt={template.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="p-3">
-                        <h3 className="font-medium text-gray-900">{template.name}</h3>
-                        {selectedTemplateId === template.id && (
-                          <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1">
-                            <CheckCircle className="w-4 h-4" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {templates.length > 0 && (
-                <div className="mt-6 flex justify-end">
-                  <Button 
-                    onClick={() => setCreationStep('products')}
-                    disabled={!selectedTemplateId && templates.length > 0}
-                  >
-                    Next: Select Products
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-
       case 'products':
         return (
           <div className="max-w-6xl mx-auto">
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
-                  <Users className="w-6 h-6" />
+                  <Package className="w-6 h-6" />
                   <span>Select Your Products</span>
                 </CardTitle>
                 <CardDescription>
@@ -246,14 +176,7 @@ export default function CreateCampaign() {
               </div>
             </div>
             
-            <div className="mt-6 flex justify-between">
-              <Button 
-                variant="outline"
-                onClick={() => setCreationStep('layout')}
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back: Template
-              </Button>
+            <div className="mt-6 flex justify-end">
               <Button 
                 onClick={() => setCreationStep('pages')}
                 disabled={selectedProducts.length === 0}
@@ -349,6 +272,100 @@ export default function CreateCampaign() {
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back: Products
                 </Button>
+                <Button onClick={() => setCreationStep('templates')}>
+                  Next: Choose Templates
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+
+      case 'templates':
+        return (
+          <Card className="max-w-5xl mx-auto">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Layout className="w-6 h-6" />
+                <span>Choose Templates for Each Page</span>
+              </CardTitle>
+              <CardDescription>
+                Select templates for each page of your brochure. You can choose different templates for each page or use the same template for all pages.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {Array.from({ length: pageCount }, (_, pageIndex) => (
+                  <div key={pageIndex} className="border rounded-lg p-4">
+                    <h4 className="font-medium text-gray-900 mb-3">Page {pageIndex + 1} Template</h4>
+                    {templates.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Layout className="w-12 h-12 mx-auto text-gray-400 mb-2" />
+                        <p className="text-gray-600 text-sm">No templates available. Default background will be used.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <div 
+                          className={`relative border-2 rounded-lg cursor-pointer transition-all hover:shadow-lg ${
+                            !pageTemplates[pageIndex + 1] 
+                              ? 'border-blue-500 bg-blue-50' 
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                          onClick={() => setPageTemplates(prev => ({ ...prev, [pageIndex + 1]: null }))}
+                        >
+                          <div className="aspect-[3/4] rounded-lg overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                            <Layout className="w-8 h-8 text-white" />
+                          </div>
+                          <div className="p-2">
+                            <h5 className="text-sm font-medium text-gray-900">Default Background</h5>
+                            {!pageTemplates[pageIndex + 1] && (
+                              <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full p-1">
+                                <CheckCircle className="w-3 h-3" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {templates.map((template) => (
+                          <div 
+                            key={template.id}
+                            className={`relative border-2 rounded-lg cursor-pointer transition-all hover:shadow-lg ${
+                              pageTemplates[pageIndex + 1] === template.id 
+                                ? 'border-blue-500 bg-blue-50' 
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => setPageTemplates(prev => ({ ...prev, [pageIndex + 1]: template.id }))}
+                          >
+                            <div className="aspect-[3/4] rounded-lg overflow-hidden">
+                              <img 
+                                src={`/uploads/${template.filePath}`}
+                                alt={template.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="p-2">
+                              <h5 className="text-sm font-medium text-gray-900">{template.name}</h5>
+                              {pageTemplates[pageIndex + 1] === template.id && (
+                                <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full p-1">
+                                  <CheckCircle className="w-3 h-3" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-6 flex justify-between">
+                <Button 
+                  variant="outline"
+                  onClick={() => setCreationStep('pages')}
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back: Page Setup
+                </Button>
                 <Button onClick={handleProceedToEditor}>
                   Start Designing
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -378,10 +395,10 @@ export default function CreateCampaign() {
               <div className="flex justify-start">
                 <Button 
                   variant="outline"
-                  onClick={() => setCreationStep('pages')}
+                  onClick={() => setCreationStep('templates')}
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back: Page Setup
+                  Back: Templates
                 </Button>
               </div>
             )}

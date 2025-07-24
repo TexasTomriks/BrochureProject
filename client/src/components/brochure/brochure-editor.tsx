@@ -507,57 +507,8 @@ export default function BrochureEditor({
       </div>
 
       <div className="flex-1 p-6 overflow-y-auto">
-        {/* Campaign Settings */}
+        {/* Date Settings Only */}
         <div className="mb-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Choose Template
-              </label>
-              <Select value={selectedTemplateId?.toString()} onValueChange={handleTemplateSelect}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a template" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.isArray(templates) && templates.map((template) => (
-                    <SelectItem key={template.id} value={template.id.toString()}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Choose Logo
-              </label>
-              <Select value={selectedLogoId?.toString() || activeLogo?.id?.toString()} onValueChange={handleLogoSelect}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a logo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.isArray(logos) && logos.map((logo) => (
-                    <SelectItem key={logo.id} value={logo.id.toString()}>
-                      {logo.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Company Name
-            </label>
-            <Input
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Enter company name"
-            />
-          </div>
-          
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

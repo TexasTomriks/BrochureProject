@@ -28,7 +28,7 @@ export default function SelectedProducts({
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative z-10">
       <div className="p-6 border-b border-gray-200 bg-white">
         <h2 className="text-xl font-semibold text-gray-900">Selected Products</h2>
       </div>
@@ -41,7 +41,7 @@ export default function SelectedProducts({
           </div>
         ) : (
           products.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl p-4 border border-gray-200">
+            <div key={item.id} className="bg-white rounded-xl p-4 border border-gray-200 relative z-20 shadow-sm">
               <div className="flex items-center space-x-4 mb-3">
                 {item.product.imageUrl && (
                   <img
@@ -87,14 +87,21 @@ export default function SelectedProducts({
                     <Input
                       type="number"
                       value={item.discountPercent}
-                      onChange={(e) => handleDiscountChange(
-                        item.id,
-                        parseFloat(e.target.value) || 0,
-                        item.product.originalPrice
-                      )}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const discount = value === '' ? 0 : parseFloat(value);
+                        if (!isNaN(discount) && discount >= 0 && discount <= 100) {
+                          handleDiscountChange(
+                            item.id,
+                            discount,
+                            item.product.originalPrice
+                          );
+                        }
+                      }}
                       className="w-16 text-center"
                       min="0"
                       max="100"
+                      step="0.1"
                     />
                     <span className="text-sm">%</span>
                   </div>

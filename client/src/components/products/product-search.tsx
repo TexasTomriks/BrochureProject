@@ -37,8 +37,8 @@ export default function ProductSearch({ onProductSelect }: ProductSearchProps) {
   ];
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-6 border-b border-gray-200">
+    <div className="h-full flex flex-col relative z-10">
+      <div className="p-6 border-b border-gray-200 bg-white">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Add Products</h2>
         
         {/* Search Bar */}
@@ -96,7 +96,7 @@ export default function ProductSearch({ onProductSelect }: ProductSearchProps) {
           products.map((product: Product) => (
             <div
               key={product.id}
-              className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer"
+              className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow cursor-pointer relative z-20 bg-white"
             >
               <div className="flex space-x-4">
                 {product.imageUrl && (
